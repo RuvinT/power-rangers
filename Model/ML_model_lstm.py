@@ -149,9 +149,9 @@ features['Datetime'] = scaler.fit_transform(features['Datetime'].dt.hour.values.
 x_features = []
 y_target = []
 
-for i in range(120, (len(df)-120)):
-    x_features.append(features[i-120:i])
-    y_target.append(df['HOEP ($/MWh)'][i:i+120])
+for i in range(336, (len(df)-336)):
+    x_features.append(features[i-336:i])
+    y_target.append(df['Total Supply (MW)'][i:i+336])
     
     
 # Convert the x_train and y_train to numpy arrays 
@@ -169,31 +169,32 @@ X_train, X_valid, Y_train, Y_valid = train_test_split(
 # define model architecture
 
 model = Sequential()
-model.add(LSTM(120, input_shape=(120,11), return_sequences=True))
-model.add(LSTM(240))
-model.add(Dense(120))  # Output layer with 120 units
+model.add(LSTM(500, input_shape=(336,11), return_sequences=True))
+model.add(LSTM(400))
+model.add(Dense(336))  # Output layer with 120 units
 
 # compile model
 model.compile(optimizer='adam', loss='mse')
 
 # train model
-history = model.fit(X_train, Y_train, epochs=20, batch_size=32, validation_data=(X_valid, Y_valid))
+history = model.fit(X_train, Y_train, epochs=15, batch_size=32, validation_data=(X_valid, Y_valid))
 
 
 # Save the model to a file
-filename = 'model_ts.pkl'
+filename = 'model_Total Supply (MW).pkl'
 with open(filename, 'wb') as file:
     pickle.dump(model, file)
     
      
 # Make a prediction
 
-prediction = model.predict(X_train[-1:])
+prediction = model.predict(X_valid[0:1, :, :])
+print(prediction)
 
 # Inverse transform the scaled predictions
 original_predictions = scaler.inverse_transform(prediction)
 
-prediction_length = 120
+prediction_length = 336
 # list called test_dates
 start_time = df.iloc[-1:]['Datetime']
 
@@ -209,9 +210,10 @@ for i in range(prediction_length):
 
 import matplotlib.pyplot as plt
 
-true_val = scaler.inverse_transform(Y_valid[-1:])[0][:prediction_length]
-
-pred_val = original_predictions[0][:prediction_length]
+true_val = scaler.inverse_transform(Y_valid[0:1])[0]
+t_val = Y_valid[1:]
+print(t_val)
+pred_val = original_predictions[0]
 # Plot the test data and predicted data
 plt.plot(future_times,true_val , label='Actual Data')
 plt.plot(future_times,pred_val , label='Predicted Data')
@@ -220,7 +222,7 @@ plt.plot(future_times,pred_val , label='Predicted Data')
 plt.xlabel('Date')
 
 # Set the y-axis label
-plt.ylabel('Ontario Demand (MW)')
+plt.ylabel('Total Supply (MW)')
 
 # Add a title to the graph
 plt.title('Actual Data vs Predicted Data')

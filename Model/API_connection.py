@@ -14,6 +14,14 @@ import pickle
 from sklearn.preprocessing import MinMaxScaler
 
 
+import numpy as np
+import pandas as pd
+from sklearn.model_selection import train_test_split
+from keras.models import Sequential
+from keras.layers import Dense, LSTM
+import pickle
+from sklearn.preprocessing import MinMaxScaler
+
 # Load the dataset
 df = pd.read_csv('ieso_final_dataset.csv')
 # ... Perform the steps to convert columns and filter the data as shown in your previous code ...
@@ -27,49 +35,48 @@ scaler = MinMaxScaler()
 # Specify the fields/columns that need to be converted
 fields_to_convert = ['Market Demand (MW)', 'HOEP ($/MWh)', 'Nuclear Supply (MW)', 'Gas Supply (MW)',
                      'Hydro Supply (MW)', 'Wind Supply (MW)', 'Solar Supply (MW)', 'Biofuel Supply (MW)',
-                     'Total Supply (MW)','Ontario Demand (MW)']
+                     'Total Supply (MW)']
 df[fields_to_convert] = scaler.fit_transform(df[fields_to_convert])
 
 features = df.copy()
-features['Datetime'] = scaler.fit_transform(features['Datetime'].dt.hour.values.reshape(-1, 1))
 
 
-x_features = []
-y_target = []
 
-for i in range(120, (len(df)-120)):
-    x_features.append(features[i-120:i])
-    y_target.append(df['Ontario Demand (MW)'][i:i+120])
-    
-    
-# Convert the x_train and y_train to numpy arrays 
-x_features, y_target = np.array(x_features), np.array(y_target)
-
-
-features = x_features
-target = y_target
-
-print(features.shape,target.shape)
- 
-X_train, X_valid, Y_train, Y_valid = train_test_split(
-    features, target, test_size=0.2, shuffle=False)
 
 
 
 # Load the model from the file
-with open('model.pkl', 'rb') as file:
+with open('model_ts.pkl', 'rb') as file:
     model = pickle.load(file)
 
-# Make a prediction
 
-prediction = model.predict(X_train[-1:])
+# Get data from 2023 April 16 onwards and up to 336 data points in the future
+start_date = pd.to_datetime('2023-04-16')
+future_data_points = 336
+
+prediction_data = features[features['Datetime'] >= start_date].iloc[-future_data_points:].copy()
+prediction_data['Datetime'] = scaler.fit_transform(prediction_data['Datetime'].dt.hour.values.reshape(-1, 1))
+prediction_data['Ontario Demand (MW)'] = scaler.fit_transform(prediction_data['Ontario Demand (MW)'].values.reshape(-1, 1))
+
+
+print("shape of data",prediction_data.shape)
+
+# Reshape the data to have one additional dimension with size 1
+prediction_data_reshaped = prediction_data.values.reshape(1, prediction_data.shape[0], prediction_data.shape[1])
+
+print("Shape of data:", prediction_data_reshaped.shape)
+
+prediction = model.predict(prediction_data_reshaped)
 
 # Inverse transform the scaled predictions
 original_predictions = scaler.inverse_transform(prediction)
+original_predictions = original_predictions.flatten()
 
-prediction_length = 120
+prediction_length = future_data_points
 # list called test_dates
-start_time = df.iloc[-1:]['Datetime']
+
+
+
 
 from datetime import timedelta
 
@@ -78,14 +85,13 @@ future_times = []
 
 # Generate the future time points
 for i in range(prediction_length):
-    future_time = start_time.iloc[0] + timedelta(hours=i)
+    future_time = start_date + timedelta(hours=i)
     future_times.append(future_time)
 
 import matplotlib.pyplot as plt
 
-true_val = scaler.inverse_transform(Y_valid[-1:])[0][:prediction_length]
-
-pred_val = original_predictions[0][:prediction_length]
+true_val = scaler.inverse_transform(prediction_data["Ontario Demand (MW)"].values.reshape(-1, 1))
+pred_val = original_predictions
 # Plot the test data and predicted data
 plt.plot(future_times,true_val , label='Actual Data')
 plt.plot(future_times,pred_val , label='Predicted Data')
@@ -94,7 +100,7 @@ plt.plot(future_times,pred_val , label='Predicted Data')
 plt.xlabel('Date')
 
 # Set the y-axis label
-plt.ylabel('HOEP ($/MWh)')
+plt.ylabel('Ontario Demand (MW)')
 
 # Add a title to the graph
 plt.title('Actual Data vs Predicted Data')
@@ -108,14 +114,7 @@ plt.xticks(rotation=45)
 # Display the graph
 plt.show()
 
-from sklearn.metrics import mean_absolute_percentage_error
 
-# Obtaining predictions from the trained LSTM model
-predictions = model.predict(X_valid)
-
-# Calculating the MAPE
-mape = mean_absolute_percentage_error(Y_valid, predictions)
-print("MAPE:", mape)
 
 import requests
 import json
@@ -132,13 +131,13 @@ for date, value in zip(future_times, pred_val):
     data_obj = {
         "Date": date.strftime("%Y-%m-%d"),  # Convert datetime object to string format
         "Hour": str(date.hour),  # Convert hour to string format
-        "EnergyType": "Ontario_Demand",
+        "EnergyType": "Total Supply (MW)",
         "EnergyPrice": str(value)  # Convert energy price to string format
     }
     data_list.append(data_obj)
 
 # Create the payload with the list of data objects
-
+'''
 for obj in data_list :
     
     payload = json.dumps(obj)
@@ -150,4 +149,4 @@ for obj in data_list :
     response = requests.request("POST", url, headers=headers, data=payload)
     
     print(response.text)
-
+'''
